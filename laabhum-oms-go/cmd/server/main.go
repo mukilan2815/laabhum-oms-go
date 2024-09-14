@@ -1,46 +1,57 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
+	"github.com/Mukilan-T/laabhum-oms-go/models"
+	"github.com/Mukilan-T/laabhum-oms-go/repository"
+	"github.com/Mukilan-T/laabhum-oms-go/service"
 	"github.com/gorilla/mux"
-    "github.com/laabhum/laabhum-oms-go/api"
-    "github.com/laabhum/laabhum-oms-go/repository"
-    "github.com/laabhum/laabhum-oms-go/service"
 )
 
 func main() {
-    repo := repository.NewOrderRepository()
-    oms := service.NewOMS(repo)
+	repo := repository.NewInMemoryOrderRepository()
+	omsService := service.NewOMSService(repo)
 
-    r := mux.NewRouter()
-    api.RegisterHandlers(r, oms)
+	r := mux.NewRouter()
 
-    r.Use(loggingMiddleware)
+	r.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			orders, err := omsService.GetOrders()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			response, err := json.Marshal(orders)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(response)
+		} else if r.Method == http.MethodPost {
+			var order models.Order
+			if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			createdOrder, err := omsService.CreateOrder(order)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			response, err := json.Marshal(createdOrder)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(response)
+		}
+	}).Methods(http.MethodGet, http.MethodPost)
 
-    log.Println("Server is running on :8080")
-    log.Fatal(http.ListenAndServe(":8080", r))
-}
-
-func loggingMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        log.Printf("Incoming request: Method=%s, URL=%s, RemoteAddr=%s", r.Method, r.URL.String(), r.RemoteAddr)
-
-        rr := &responseRecorder{ResponseWriter: w}
-        
-        next.ServeHTTP(rr, r)
-
-        log.Printf("Response status: %d", rr.statusCode)
-    })
-}
-
-type responseRecorder struct {
-    http.ResponseWriter
-    statusCode int
-}
-
-func (rr *responseRecorder) WriteHeader(statusCode int) {
-    rr.statusCode = statusCode
-    rr.ResponseWriter.WriteHeader(statusCode)
+	log.Println("Server started at :8081")
+	log.Fatal(http.ListenAndServe(":8081", r))
 }
