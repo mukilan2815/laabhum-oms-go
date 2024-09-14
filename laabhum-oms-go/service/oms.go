@@ -1,50 +1,43 @@
 package service
 
 import (
-    "github.com/laabhum/laabhum-oms-go/internal/models"
-    "github.com/laabhum/laabhum-oms-go/internal/repository"
-    "time"
-    "github.com/google/uuid"
+	"time"
+
+	"github.com/Mukilan-T/laabhum-oms-go/models"
+	"github.com/Mukilan-T/laabhum-oms-go/repository"
+	"github.com/google/uuid"
 )
 
-type OMS struct {
-    repo *repository.OrderRepository
+type OMSService struct {
+    repo repository.OrderRepository
 }
 
-func NewOMS(repo *repository.OrderRepository) *OMS {
-    return &OMS{repo: repo}
-}
-
-func (oms *OMS) CreateOrder(symbol string, quantity int, price float64, side string) *models.Order {
-    order := &models.Order{
-        ID:        uuid.NewString(),
-        Symbol:    symbol,
-        Quantity:  quantity,
-        Price:     price,
-        Side:      side,
-        Status:    "created",
-        CreatedAt: time.Now().Unix(),
+func NewOMSService(repo repository.OrderRepository) *OMSService {
+    return &OMSService{
+        repo: repo,
     }
-    oms.repo.CreateOrder(order)
-    return order
 }
 
-func (oms *OMS) ExecuteOrder(id string) (*models.Order, bool) {
-    order, exists := oms.repo.GetOrder(id)
-    if !exists || order.Status != "created" {
-        return nil, false
-    }
-    order.Status = "executed"
-    oms.repo.UpdateOrder(order)
-    return order, true
+func (s *OMSService) CreateScalperOrder(order models.ScalperOrder) (*models.ScalperOrder, error) {
+    order.ID = uuid.NewString()
+    order.CreatedAt = time.Now().Unix()
+    return s.repo.CreateScalperOrder(order)
 }
 
-func (oms *OMS) CancelOrder(id string) (*models.Order, bool) {
-    order, exists := oms.repo.GetOrder(id)
-    if !exists || order.Status != "created" {
-        return nil, false
-    }
-    order.Status = "canceled"
-    oms.repo.UpdateOrder(order)
-    return order, true
+func (s *OMSService) ExecuteChildOrder(parentID, childID string) error {
+    return s.repo.ExecuteChildOrder(parentID, childID)
+}
+
+func (s *OMSService) GetTrades(parentID string) ([]models.Trade, error) {
+    return s.repo.GetTrades(parentID)
+}
+
+func (s *OMSService) CreateOrder(order models.Order) (*models.Order, error) {
+    order.ID = uuid.NewString()
+    order.CreatedAt = time.Now().Unix()
+    return s.repo.CreateOrder(order)
+}
+
+func (s *OMSService) GetOrders() ([]models.Order, error) {
+    return s.repo.GetOrders()
 }

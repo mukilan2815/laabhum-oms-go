@@ -1,74 +1,88 @@
 package api
 
 import (
-    "encoding/json"
-    "net/http"
-    "github.com/gorilla/mux"
-    "github.com/laabhum/laabhum-oms-go/internal/service"
-    "github.com/laabhum/laabhum-oms-go/pkg/kafka"
+	"net/http"
+
+	"github.com/Mukilan-T/laabhum-oms-go/models"
+	"github.com/Mukilan-T/laabhum-oms-go/service"
+	"github.com/gin-gonic/gin"
 )
 
 type Handlers struct {
-    oms *service.OMS
+	omsService *service.OMSService
 }
 
-func NewHandlers(oms *service.OMS) *Handlers {
-    return &Handlers{oms: oms}
+func NewHandlers(omsService *service.OMSService) *Handlers {
+	return &Handlers{
+		omsService: omsService,
+	}
 }
 
-func RegisterHandlers(r *mux.Router, oms *service.OMS) {
-    h := NewHandlers(oms)
+func (h *Handlers) CreateScalperOrder(c *gin.Context) {
+	var order models.ScalperOrder
+	if err := c.ShouldBindJSON(&order); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-    r.HandleFunc("/oms/scalper/order", h.CreateOrder).Methods("POST")
-    r.HandleFunc("/oms/scalper/order/{id}/execute", h.ExecuteOrder).Methods("POST")
-    r.HandleFunc("/oms/scalper/order/{id}/cancel", h.CancelOrder).Methods("POST")
+	createdOrder, err := h.omsService.CreateScalperOrder(order)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, createdOrder)
 }
 
-func (h *Handlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
-    var orderRequest struct {
-        Symbol   string  `json:"symbol"`
-        Quantity int     `json:"quantity"`
-        Price    float64 `json:"price"`
-        Side     string  `json:"side"` // buy or sell
-    }
+func (h *Handlers) ExecuteChildOrder(c *gin.Context) {
+	parentID := c.Param("parentID")
+	childID := c.Param("childID")
 
-    err := json.NewDecoder(r.Body).Decode(&orderRequest)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
-        return
-    }
+	err := h.omsService.ExecuteChildOrder(parentID, childID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    order := h.oms.CreateOrder(orderRequest.Symbol, orderRequest.Quantity, orderRequest.Price, orderRequest.Side)
-    kafka.PublishOrderCreated(order.ID)
-
-    w.WriteHeader(http.StatusCreated)
-    json.NewEncoder(w).Encode(order)
+	c.JSON(http.StatusOK, gin.H{"message": "Child order executed successfully"})
 }
 
-func (h *Handlers) ExecuteOrder(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    orderID := vars["id"]
+func (h *Handlers) GetTrades(c *gin.Context) {
+	parentID := c.Param("parentId")
 
-    order, success := h.oms.ExecuteOrder(orderID)
-    if !success {
-        http.Error(w, "Order not found or cannot be executed", http.StatusBadRequest)
-        return
-    }
+	trades, err := h.omsService.GetTrades(parentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    kafka.PublishOrderExecuted(order.ID)
-    json.NewEncoder(w).Encode(order)
+	c.JSON(http.StatusOK, trades)
 }
 
-func (h *Handlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
-    vars := mux.Vars(r)
-    orderID := vars["id"]
+func (h *Handlers) CreateOrder(c *gin.Context) {
+	var order models.Order
+	if err := c.ShouldBindJSON(&order); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
-    order, success := h.oms.CancelOrder(orderID)
-    if !success {
-        http.Error(w, "Order not found or cannot be canceled", http.StatusBadRequest)
-        return
-    }
+	createdOrder, err := h.omsService.CreateOrder(order)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-    kafka.PublishOrderCanceled(order.ID)
-    json.NewEncoder(w).Encode(order)
+	c.JSON(http.StatusCreated, createdOrder)
+		c.JSON(http.StatusCreated, gin.H{"message": "Order created successfully"})
+
+}
+
+func (h *Handlers) GetOrders(c *gin.Context) {
+	orders, err := h.omsService.GetOrders()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, orders)
 }
