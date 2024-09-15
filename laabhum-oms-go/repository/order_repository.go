@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/Mukilan-T/laabhum-oms-go/models"
 )
@@ -70,5 +71,12 @@ func (r *InMemoryOrderRepository) GetOrder(id string) (*models.Order, bool) {
 
 func (r *InMemoryOrderRepository) UpdateOrder(order *models.Order) error {
     r.orders[order.ID] = order
+    return nil
+}
+
+// SaveOrder stores the order in the database
+func SaveOrder(order map[string]interface{}) error {
+    // This is just a stub. Replace with actual DB code
+    fmt.Println("Order saved:", order)
     return nil
 }

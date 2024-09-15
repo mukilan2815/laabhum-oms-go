@@ -1,28 +1,46 @@
 package logger
 
 import (
+	"io"
+	"log"
 	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+// Logger wraps around both zap.SugaredLogger and standard log.Logger
 type Logger struct {
 	*zap.SugaredLogger
+	*log.Logger
 }
 
-func New(level string) *Logger {
-	config := zap.NewProductionEncoderConfig()
-	config.EncodeTime = zapcore.ISO8601TimeEncoder
+// New creates a new Logger instance with the given log level
+func New(logLevel string) *Logger {
+	// Create zap logger
+	zapConfig := zap.NewProductionEncoderConfig()
+	zapConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(config),
+	zapCore := zapcore.NewCore(
+		zapcore.NewJSONEncoder(zapConfig),
 		zapcore.AddSync(os.Stdout),
-		getZapLevel(level),
+		getZapLevel(logLevel),
 	)
 
-	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-	return &Logger{logger.Sugar()}
+	zapLogger := zap.New(zapCore, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+
+	// Create standard logger
+	stdLogger := log.New(os.Stdout, "", log.LstdFlags)
+
+	return &Logger{
+		SugaredLogger: zapLogger.Sugar(),
+		Logger:        stdLogger,
+	}
+}
+
+// Writer returns an io.Writer for the standard Logger
+func (l *Logger) Writer() io.Writer {
+	return l.Logger.Writer()
 }
 
 func getZapLevel(level string) zapcore.Level {

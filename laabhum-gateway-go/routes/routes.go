@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Mukilan-T/laabhum-gateway-go/api" // Import the api package
 	"github.com/Mukilan-T/laabhum-gateway-go/config"
 	"github.com/Mukilan-T/laabhum-gateway-go/internal/oms"
 	"github.com/Mukilan-T/laabhum-gateway-go/pkg/logger"
@@ -42,6 +43,12 @@ func SetupRoutes(cfg *config.Config, logger *logger.Logger, omsClient *oms.Clien
 			w.Write(createdOrder)
 		}
 	}).Methods(http.MethodGet, http.MethodPost)
+
+	// Adding the new route from the second snippet
+	router.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
+		handler := api.CreateOrderHandler(cfg, omsClient)
+		handler(w, r)
+	}).Methods("POST")
 
 	return router
 }

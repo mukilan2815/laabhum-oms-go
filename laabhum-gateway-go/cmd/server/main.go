@@ -11,10 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Mukilan-T/laabhum-gateway-go/api"
 	"github.com/Mukilan-T/laabhum-gateway-go/config"
 	"github.com/Mukilan-T/laabhum-gateway-go/internal/oms"
+	"github.com/Mukilan-T/laabhum-gateway-go/internal/strategy"
 	"github.com/Mukilan-T/laabhum-gateway-go/pkg/logger"
-	"github.com/Mukilan-T/laabhum-gateway-go/routes"
 )
 
 type Order struct {
@@ -22,7 +23,6 @@ type Order struct {
 	Status string `json:"status"`
 	// Add other fields as necessary
 }
-
 
 func main() {
 	// Load configuration
@@ -34,31 +34,41 @@ func main() {
 
 	// Initialize logger
 	logLevel := cfg.LogLevel
-	logger := logger.New(logLevel)
+	customLogger := logger.New(logLevel)
+
+	// Convert custom logger to standard log.Logger
+	stdLogger := log.New(customLogger.Writer(), "", log.LstdFlags)
 
 	// Initialize OMS client
 	omsClient := oms.NewClient(cfg.Oms.BaseURL)
 	if omsClient == nil {
-		logger.Fatalf("Failed to create OMS client")
+		stdLogger.Fatalf("Failed to create OMS client")
 	}
 
 	// Log orders (example)
 	ordersData, err := omsClient.GetOrders()
 	if err != nil {
-		logger.Fatalf("Failed to get orders: %v", err)
+		stdLogger.Fatalf("Failed to get orders: %v", err)
 	}
 
 	var orders []Order
 	if err := json.Unmarshal(ordersData, &orders); err != nil {
-		logger.Fatalf("Failed to unmarshal orders: %v", err)
+		stdLogger.Fatalf("Failed to unmarshal orders: %v", err)
 	}
 
 	for _, order := range orders {
-		logger.Infof("Order ID: %s, Status: %s", order.ID, order.Status)
+		stdLogger.Printf("Order ID: %s, Status: %s", order.ID, order.Status)
 	}
 
+	// Initialize strategy builder
+	retryPolicy := strategy.RetryPolicy{
+		MaxRetries: 3,
+		Delay:      2 * time.Second,
+	}
+	strategyBuilder := strategy.NewBuilder(stdLogger, retryPolicy)
+
 	// Setup routes
-	router := routes.SetupRoutes(cfg, logger, omsClient)
+	router := api.SetupRoutes(cfg, customLogger, omsClient, strategyBuilder)
 
 	// Create server
 	srv := &http.Server{
@@ -68,9 +78,9 @@ func main() {
 
 	// Start server
 	go func() {
-		logger.Infof("Starting server on %s", cfg.ServerAddress)
+		stdLogger.Printf("Starting server on %s", cfg.ServerAddress)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatalf("Failed to start server: %v", err)
+			stdLogger.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
@@ -78,13 +88,13 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	logger.Info("Shutting down server...")
+	stdLogger.Println("Shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Fatalf("Server forced to shutdown: %v", err)
+		stdLogger.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	logger.Info("Server exiting")
+	stdLogger.Println("Server exiting")
 }

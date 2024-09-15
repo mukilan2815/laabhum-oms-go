@@ -2,6 +2,7 @@ package nats
 
 import (
 	"github.com/nats-io/nats.go"
+	"log"
 )
 
 type NatsClient struct {
@@ -17,4 +18,16 @@ func NewNatsClient(url string) *NatsClient {
 		conn: nc,
 		ec:   ec,
 	}
+}
+
+func ConnectNATS(url string) *nats.Conn {
+	conn, err := nats.Connect(url)
+	if err != nil {
+		log.Fatalf("Error connecting to NATS: %v", err)
+	}
+	return conn
+}
+
+func PublishMessage(conn *nats.Conn, subject string, message []byte) error {
+	return conn.Publish(subject, message)
 }

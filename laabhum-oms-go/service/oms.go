@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Mukilan-T/laabhum-oms-go/models"
@@ -13,9 +14,7 @@ type OMSService struct {
 }
 
 func NewOMSService(repo repository.OrderRepository) *OMSService {
-    return &OMSService{
-        repo: repo,
-    }
+    return &OMSService{repo: repo}
 }
 
 func (s *OMSService) CreateScalperOrder(order models.ScalperOrder) (*models.ScalperOrder, error) {
@@ -40,4 +39,20 @@ func (s *OMSService) CreateOrder(order models.Order) (*models.Order, error) {
 
 func (s *OMSService) GetOrders() ([]models.Order, error) {
     return s.repo.GetOrders()
+}
+
+// ProcessOrder handles business logic for processing the order
+func ProcessOrder(order map[string]interface{}) error {
+    // Add business logic for order processing here
+    if len(order) == 0 {
+        return errors.New("invalid order data")
+    }
+
+    // Save the order to the repository (database)
+    err := repository.SaveOrder(order)
+    if err != nil {
+        return err
+    }
+
+    return nil
 }
