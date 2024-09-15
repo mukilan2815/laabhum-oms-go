@@ -1,15 +1,15 @@
 package main
 
 import (
-    "flag"
-    "fmt"
-    "net/http"
-    "bytes"
-    "encoding/json"
-    "sync"
-    "math/rand"
-    "time"
-    "strings" // Missing import for strings
+	"bytes"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"math/rand"
+	"net/http"
+	"strings" // Missing import for strings
+	"sync"
+	"time"
 )
 
 type Order struct {
