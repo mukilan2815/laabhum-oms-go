@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Config holds the application configuration
 type Config struct {
 	Oms struct {
 		BaseURL string `yaml:"baseURL"`
@@ -16,6 +17,7 @@ type Config struct {
 	ServerAddress string `yaml:"server_address"`
 }
 
+// LoadConfig loads configuration from a YAML file
 func LoadConfig() *Config {
 	file, err := os.Open("config.yaml")
 	if err != nil {

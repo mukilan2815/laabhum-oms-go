@@ -5,9 +5,10 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"fmt"
+
 	"github.com/Mukilan-T/laabhum-gateway-go/config"
 	"github.com/Mukilan-T/laabhum-gateway-go/internal/oms"
-	"github.com/Mukilan-T/laabhum-gateway-go/internal/strategy"
 	"github.com/Mukilan-T/laabhum-gateway-go/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/mux"
@@ -25,6 +26,104 @@ func NewHandlers(cfg *config.Config, logger *logger.Logger, omsClient *oms.Clien
 		logger:    logger,
 		omsClient: omsClient,
 	}
+}
+func (h *Handlers) CreatePositionOrder(c *gin.Context) {
+	body, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		h.logger.Errorf("Failed to read request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	var positionOrder oms.PositionOrder
+	if err := json.Unmarshal(body, &positionOrder); err != nil {
+		h.logger.Errorf("Failed to unmarshal position order: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid position order data"})
+		return
+	}
+
+	if err := validatePositionOrder(positionOrder); err != nil {
+		h.logger.Errorf("Position order validation failed: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	existingPositions, err := h.omsClient.GetPositionsBySymbol(positionOrder.Symbol)
+	if err != nil {
+		h.logger.Errorf("Failed to get existing positions: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get existing positions"})
+		return
+	}
+
+	adjustedOrder := adjustPositionOrder(positionOrder, existingPositions)
+
+	// Convert the adjusted position order to a standard order
+	orderToCreate := oms.Order{
+		ID:          "", // Assign a new ID as needed or let the backend generate it
+		Description: adjustedOrder.Symbol,
+		Quantity:    adjustedOrder.Quantity,
+	}
+
+	// Create the order using the omsClient
+	err = h.omsClient.CreatePositionOrder(orderToCreate)
+	if err != nil {
+		h.logger.Errorf("Failed to create position order: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create position order"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Position order created successfully"})
+}
+
+
+
+// validatePositionOrder validates the position order
+func validatePositionOrder(order oms.PositionOrder) error {
+	if order.Symbol == "" {
+		return fmt.Errorf("symbol is required")
+	}
+	if order.Quantity <= 0 {
+		return fmt.Errorf("quantity must be greater than zero")
+	}
+	// Add more validation logic as needed
+	return nil
+}
+
+// adjustPositionOrder adjusts the position order based on existing positions
+func adjustPositionOrder(order oms.PositionOrder, existingPositions []oms.Position) oms.PositionOrder {
+	// Example logic: Adjust the quantity based on existing positions
+	for _, position := range existingPositions {
+		if position.Symbol == order.Symbol {
+			order.Quantity += position.Quantity
+		}
+	}
+	return order
+}
+
+func (h *Handlers) CreateOrder(c *gin.Context) {
+	body, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		h.logger.Errorf("Failed to read request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	var order oms.Order
+	if err := json.Unmarshal(body, &order); err != nil {
+		h.logger.Errorf("Failed to unmarshal order: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order data"})
+		return
+	}
+
+	response, err := h.omsClient.CreateOrder(order)
+	if err != nil {
+		h.logger.Errorf("Failed to create order: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create order"})
+		return
+	}
+h.logger.Infof("Creating order: %+v", order)
+
+	c.Data(http.StatusCreated, "application/json", response)
 }
 
 func (h *Handlers) CreateScalperOrder(c *gin.Context) {
@@ -66,44 +165,6 @@ func (h *Handlers) ExecuteChildOrder(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", response)
 }
 
-func (h *Handlers) GetTrades(c *gin.Context) {
-	parentID := c.Param("parentID")
-
-	response, err := h.omsClient.GetTrades(parentID)
-	if err != nil {
-		h.logger.Errorf("Failed to get trades: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get trades"})
-		return
-	}
-
-	c.Data(http.StatusOK, "application/json", response)
-}
-
-func (h *Handlers) CreateOrder(c *gin.Context) {
-	body, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		h.logger.Errorf("Failed to read request body: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	var order oms.Order
-	if err := json.Unmarshal(body, &order); err != nil {
-		h.logger.Errorf("Failed to unmarshal order: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order data"})
-		return
-	}
-
-	response, err := h.omsClient.CreateOrder(order)
-	if err != nil {
-		h.logger.Errorf("Failed to create order: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create order"})
-		return
-	}
-
-	c.Data(http.StatusCreated, "application/json", response)
-}
-
 func (h *Handlers) GetOrders(c *gin.Context) {
 	response, err := h.omsClient.GetOrders()
 	if err != nil {
@@ -115,79 +176,33 @@ func (h *Handlers) GetOrders(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", response)
 }
 
-// Handler for creating an order
-func CreateOrderHandler(cfg *config.Config, omsClient *oms.Client) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var orderRequest map[string]interface{}
-
-		err := json.NewDecoder(r.Body).Decode(&orderRequest)
-		if err != nil {
-			http.Error(w, "Invalid request payload", http.StatusBadRequest)
-			return
-		}
-
-		// Call OMS client to create an order
-		order := oms.Order{
-			// Populate the order fields from orderRequest
-			// Example: ID: orderRequest["id"].(string)
-		}
-		_, err = omsClient.CreateOrder(order)
-		if err != nil {
-			http.Error(w, "Failed to create order", http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Order created successfully"})
-	}
-}
-
-func SetupRoutes(cfg *config.Config, logger *logger.Logger, omsClient *oms.Client, strategyBuilder *strategy.Builder) *mux.Router {
+// SetupRoutes sets up the routes for the API
+func SetupRoutes(cfg *config.Config, logger *logger.Logger, omsClient *oms.Client) *mux.Router {
 	router := mux.NewRouter()
+	h := NewHandlers(cfg, logger, omsClient)
 
-	router.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			ordersData, err := omsClient.GetOrders()
-			if err != nil {
-				logger.Errorf("Failed to get orders: %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(ordersData)
-			return
-		}
-		if r.Method == http.MethodPost {
-			var order oms.Order
-			if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
-				logger.Errorf("Failed to decode order: %v", err)
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			strategyResponse, err := strategyBuilder.ProcessOrder(order)
-			if err != nil {
-				logger.Errorf("Failed to process order: %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if strategyResponse != "" {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(strategyResponse))
-				return
-			}
-			createdOrder, err := omsClient.CreateOrder(order)
-			if err != nil {
-				logger.Errorf("Failed to create order: %v", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(createdOrder)
-		}
-	}).Methods(http.MethodGet, http.MethodPost)
-	// Add the new route for CreateOrderHandler
-	router.HandleFunc("/create-order", CreateOrderHandler(cfg, omsClient)).Methods(http.MethodPost)
-	router.HandleFunc("/create-order", CreateOrderHandler(cfg, omsClient)).Methods(http.MethodPost)
+	router.Handle("/orders", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := gin.CreateTestContext(w)
+		c.Request = r
+		h.CreateOrder(c)
+	})).Methods(http.MethodPost)
+	router.Handle("/scalper/orders", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := gin.CreateTestContext(w)
+		c.Request = r
+		h.CreateScalperOrder(c)
+	})).Methods(http.MethodPost)
+	router.Handle("/orders", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := gin.CreateTestContext(w)
+		c.Request = r
+		h.GetOrders(c)
+	})).Methods(http.MethodGet)
+
+	// Additional routes for child orders and trades
+	router.Handle("/oms/child/{parentID}/{childID}/execute", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := gin.CreateTestContext(w)
+		c.Request = r
+		h.ExecuteChildOrder(c)
+	})).Methods(http.MethodPost)
 
 	return router
 }

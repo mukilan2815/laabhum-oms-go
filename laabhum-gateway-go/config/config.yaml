@@ -1,0 +1,5 @@
+oms: 
+ baseURL: "http://localhost:8080"
+ log_level: "INFO"
+ oms_address: "localhost:8080"
+ server_address: "localhost:8000"

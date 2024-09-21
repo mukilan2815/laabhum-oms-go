@@ -1,13 +1,42 @@
-package middleware
+package logger
 
 import (
 	"time"
 
-	"github.com/Mukilan-T/laabhum-gateway-go/pkg/logger"
-	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+	"github.com/gin-gonic/gin" // Add this import
+	"os"
 )
 
-func Logger(log *logger.Logger) gin.HandlerFunc {
+// Logger wraps the logrus.Logger
+type Logger struct {
+	*logrus.Logger
+}
+
+// New creates a new Logger instance
+func New(level logrus.Level) *Logger {
+	log := logrus.New()
+	log.SetOutput(os.Stdout)
+	log.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+	log.SetLevel(level)
+
+	return &Logger{log}
+}
+
+// Infof logs info level messages
+func (l *Logger) Infof(format string, args ...interface{}) {
+	l.Logger.Infof(format, args...)
+}
+
+// Errorf logs error level messages
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	l.Logger.Errorf(format, args...)
+}
+
+// Logger middleware for Gin
+func Middleware(log *Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
